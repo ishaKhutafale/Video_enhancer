@@ -1,96 +1,86 @@
-#!/usr/bin/env python3
-"""
-CPU-safe enhancement pipeline (FASTER VERSION)
- - Extract frames
- - Deblur + upscale (RealESRGAN only)
-Designed to run on CPU only (no GPU)
-"""
-
 import os
-import cv2
 import subprocess
-from tqdm import tqdm
-import shutil
+from multiprocessing import Pool, cpu_count
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 BIN_DIR = os.path.join(PROJECT_ROOT, "bin")
-INPUT_VIDEO = os.path.join(PROJECT_ROOT, "input", "input.mp4")
-
 TMP_FRAMES = os.path.join(PROJECT_ROOT, "frames")
 FOLDER_UPSCALE = os.path.join(PROJECT_ROOT, "upscaled")
-OUTPUT_VIDEO = os.path.join(PROJECT_ROOT, "output", "enhanced_output.mp4")
+OUTPUT_DIR = os.path.join(PROJECT_ROOT, "output")
 
 UPSCALE_FACTOR = 2
-GPU_MODE = "0"        # CPU only
-TILE_SIZE = "128"     # small tile = low heat
+GPU_MODE = "0"  # 0 = CPU only
+TILE_SIZE = "256"
 
 BIN_RR = os.path.join(BIN_DIR, "realesrgan-ncnn-vulkan")
 
-for d in [TMP_FRAMES, FOLDER_UPSCALE, os.path.join(PROJECT_ROOT, "output")]:
-    os.makedirs(d, exist_ok=True)
 
-# ----- Extract frames -----
-cap = cv2.VideoCapture(INPUT_VIDEO)
-fps = cap.get(cv2.CAP_PROP_FPS)
-count = 0
-while True:
-    ret, frame = cap.read()
-    if not ret: break
-    cv2.imwrite(os.path.join(TMP_FRAMES, f"{count:06d}.png"), frame)
-    count += 1
-cap.release()
-print(f"Frames extracted: {count}")
-
-def run_cmd(cmd):
-    subprocess.run(cmd, check=True)
-
-# ----- Deblur + Upscale (only RealESRGAN) -----
-print("Upscaling with RealESRGAN...")
-for i in tqdm(range(count)):
-    infile = os.path.join(TMP_FRAMES, f"{i:06d}.png")
-    outfile = os.path.join(FOLDER_UPSCALE, f"{i:06d}.png")
-    cmd = [
-        BIN_RR, "-i", infile, "-o", outfile,
+def upscale_frame(i):
+    infile = os.path.join(TMP_FRAMES, f"{i:06d}.jpg")
+    outfile = os.path.join(FOLDER_UPSCALE, f"{i:06d}.jpg")
+    subprocess.run([
+        BIN_RR,
+        "-i", infile,
+        "-o", outfile,
         "-s", str(UPSCALE_FACTOR),
-        "-g", GPU_MODE, "-t", TILE_SIZE
-    ]
-    run_cmd(cmd)
+        "-g", GPU_MODE,
+        "-t", TILE_SIZE
+    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return 1
 
-# ----- Rebuild video without audio (current code) -----
-first = os.path.join(FOLDER_UPSCALE, "000000.png")
-h, w = cv2.imread(first).shape[:2]
-temp_video = os.path.join(PROJECT_ROOT, "output", "noaudio.mp4")
-video = cv2.VideoWriter(temp_video, cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
-for i in tqdm(range(count)):
-    video.write(cv2.imread(os.path.join(FOLDER_UPSCALE, f"{i:06d}.png")))
-video.release()
 
-# ----- Merge original audio safely (only if audio exists) -----
-final_output = OUTPUT_VIDEO  # already defined
+def enhance_video(input_video, progress_callback=None):
+    os.makedirs(TMP_FRAMES, exist_ok=True)
+    os.makedirs(FOLDER_UPSCALE, exist_ok=True)
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# Check if original video has audio using ffprobe
-audio_check = subprocess.run(
-    ["ffprobe", "-i", INPUT_VIDEO, "-show_streams", "-select_streams", "a", "-loglevel", "error"]
-)
+    # Clean old files
+    for folder in [TMP_FRAMES, FOLDER_UPSCALE]:
+        for f in os.listdir(folder):
+            os.remove(os.path.join(folder, f))
 
-if audio_check.returncode == 0:
-    # Audio exists, merge it
-    cmd_audio = [
-        "ffmpeg",
-        "-y",
-        "-i", temp_video,           # upscaled video
-        "-i", INPUT_VIDEO,          # original video with audio
-        "-c:v", "copy",             # copy video without re-encoding
-        "-c:a", "aac",              # encode audio as AAC
-        "-map", "0:v:0",            # take video from first input
-        "-map", "1:a:0",            # take audio from second input
+    enhanced_no_audio = os.path.join(OUTPUT_DIR, "enhanced_no_audio.mp4")
+    final_output = os.path.join(OUTPUT_DIR, "enhanced_output.mp4")
+
+    # Extract frames
+    subprocess.run([
+        "ffmpeg", "-y", "-i", input_video,
+        os.path.join(TMP_FRAMES, "%06d.jpg")
+    ], check=True)
+
+    frames = sorted(f for f in os.listdir(TMP_FRAMES) if f.endswith(".jpg"))
+    total = len(frames)
+    done = 0
+
+    # Upscale frames (CPU-safe)
+    with Pool(max(1, cpu_count() // 2)) as pool:
+        for _ in pool.imap_unordered(upscale_frame, range(total)):
+            done += 1
+            if progress_callback:
+                progress_callback(done, total)
+
+    # Rebuild video (NO audio)
+    # Browser compatible format
+    subprocess.run([
+        "ffmpeg", "-y", "-framerate", "24",
+        "-i", os.path.join(FOLDER_UPSCALE, "%06d.jpg"),
+        "-c:v", "libx264",
+        "-pix_fmt", "yuv420p",
+        "-movflags", "+faststart",
+        enhanced_no_audio
+    ], check=True)
+
+ 
+    # Merge original audio back
+    subprocess.run([
+        "ffmpeg", "-y",
+        "-i", enhanced_no_audio,
+        "-i", input_video,
+        "-c:v", "copy",
+        "-c:a", "aac",
+        "-map", "0:v:0",
+        "-map", "1:a:0",
+        "-shortest",
         final_output
-    ]
-    run_cmd(cmd_audio)
-    os.remove(temp_video)
-else:
-    # No audio found, just rename temp video
-    shutil.move(temp_video, final_output)
-
-print("Done! Final video saved as:", final_output)
+    ], check=True)
 

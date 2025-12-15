@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Video Enhancer</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header-box">
+          <h1>Video Enhancer (CPU)</h1>
+        </div>
+
+
+        <div class="upload-section">
+            <input type="file" id="videoInput">
+            <button id="enhanceBtn" onclick="upload()">Enhance Video</button>
+        </div>
+
+        <div class="progress">
+            <div id="bar"></div>
+        </div>
+
+        <div class="videos">
+            <div class="video-container">
+                <h2>Original</h2>
+                <video id="inputVideo" controls></video>
+            </div>
+            <div class="video-container">
+                <h2>Enhanced</h2>
+                <video id="outputVideo" controls style="display:none;"></video>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
+
