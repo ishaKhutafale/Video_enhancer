@@ -30,7 +30,7 @@ pip install --upgrade pip
 pip install -r requirements.txt
 
 # 4. Run the enhancer
-python enhance.py
+python app.py
 ```
 
 # Setup & Run (Windows)
@@ -46,13 +46,13 @@ pip install --upgrade pip
 pip install -r requirements.txt
 
 # 4. Run the enhancer
-python enhance.py
+python app.py
 
 ```
 
 # Usage
 
 Place the input video at input/input.mp4.
-The script will extract frames, apply deblur + upscale with RealESRGAN, and assemble a new video.
+The script will extract frames, apply upscale with RealESRGAN, and assemble a new video.
 Final output will be created at output/enhanced_output.mp4.
 
