@@ -1,3 +1,5 @@
 opencv-python
 tqdm
 flask
+gunicorn
+numpy

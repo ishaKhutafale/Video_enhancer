@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+venvWin/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+.Rhistory
+.RData
+
+# Git
+.git/
+.gitignore
+
+# Temporary files
+frames/*.jpg
+upscaled/*.jpg
+input/*.mp4
+input/*.avi
+input/*.mov
+output/*.mp4
+output/*.avi
+output/*.mov
+
+# Documentation
+*.md
+ANDROID_APP_SETUP_GUIDE.md
+README.md
+
+# Android files (not needed for backend)
+android_app_files/
