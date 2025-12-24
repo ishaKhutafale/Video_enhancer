@@ -1,1 +1,59 @@
+# Virtual environments
 venv/
+venvWin/
+env/
+ENV/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Project specific
+frames/
+upscaled/
+input/*.mp4
+input/*.avi
+input/*.mov
+output/*.mp4
+output/*.avi
+output/*.mov
+
+# R files
+.Rhistory
+.RData

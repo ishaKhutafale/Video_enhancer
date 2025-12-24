@@ -14,7 +14,9 @@ os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 # Progress state
 progress = {
     "current": 0,
-    "total": 1
+    "total": 1,
+    "status": "idle",  # idle, processing, completed, error
+    "message": ""
 }
 
 # Background enhancement thread
@@ -22,8 +24,18 @@ def run_enhance(video_path):
     def update(curr, total):
         progress["current"] = curr
         progress["total"] = total
-
-    enhance_video(video_path, update)
+        progress["status"] = "processing"
+        progress["message"] = f"Processing frame {curr}/{total}"
+    
+    try:
+        progress["status"] = "processing"
+        progress["message"] = "Starting enhancement..."
+        enhance_video(video_path, update)
+        progress["status"] = "completed"
+        progress["message"] = "Enhancement completed successfully!"
+    except Exception as e:
+        progress["status"] = "error"
+        progress["message"] = f"Error: {str(e)}"
 
 # Routes
 @app.route("/")
@@ -39,6 +51,8 @@ def upload():
     # Reset progress
     progress["current"] = 0
     progress["total"] = 1
+    progress["status"] = "idle"
+    progress["message"] = ""
 
     # Run enhancement in background
     threading.Thread(
@@ -47,7 +61,7 @@ def upload():
         daemon=True
     ).start()
 
-    return jsonify({"status": "started"})
+    return jsonify({"status": "started", "input_video": "input.mp4"})
 
 @app.route("/progress")
 def get_progress():
@@ -60,7 +74,26 @@ def serve_output(filename):
         OUTPUT_FOLDER, filename, mimetype="video/mp4"
     )
 
+# Serve input video for preview
+@app.route("/input/<path:filename>")
+def serve_input(filename):
+    return send_from_directory(
+        UPLOAD_FOLDER, filename, mimetype="video/mp4"
+    )
+
+# Check if output video exists
+@app.route("/check_output")
+def check_output():
+    output_path = os.path.join(OUTPUT_FOLDER, "enhanced_output.mp4")
+    exists = os.path.exists(output_path)
+    size = os.path.getsize(output_path) if exists else 0
+    return jsonify({
+        "exists": exists,
+        "ready": exists and size > 0,
+        "filename": "enhanced_output.mp4" if exists else None
+    })
+
 # Run app
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True)
 
