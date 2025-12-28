@@ -37,6 +37,25 @@ else:
     # On Linux/Mac, use non-.exe version
     if os.path.exists(BIN_RR_NO_EXT):
         BIN_RR = BIN_RR_NO_EXT
+        # Test if binary is executable
+        if not os.access(BIN_RR, os.X_OK):
+            print(f"WARNING: {BIN_RR} is not executable! Attempting to fix...", flush=True)
+            try:
+                os.chmod(BIN_RR, 0o755)
+                print(f"Fixed permissions on {BIN_RR}", flush=True)
+            except Exception as e:
+                print(f"ERROR: Could not fix permissions: {e}", flush=True)
+        
+        # Test binary with --help
+        print(f"Testing Real-ESRGAN binary: {BIN_RR}", flush=True)
+        try:
+            test_result = subprocess.run([BIN_RR], capture_output=True, text=True, timeout=5)
+            print(f"Binary test stdout: {test_result.stdout[:200]}", flush=True)
+            print(f"Binary test stderr: {test_result.stderr[:200]}", flush=True)
+            print(f"Binary test return code: {test_result.returncode}", flush=True)
+        except Exception as e:
+            print(f"WARNING: Binary test failed: {e}", flush=True)
+            print(f"This may indicate Vulkan/GPU issues - processing will be slow or fail", flush=True)
     else:
         raise FileNotFoundError(
             "Real-ESRGAN executable not found!\n"

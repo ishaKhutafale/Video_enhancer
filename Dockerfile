@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y \
     wget \
     unzip \
     libvulkan1 \
+    file \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -22,8 +23,15 @@ COPY . .
 # Create necessary directories
 RUN mkdir -p input output frames upscaled
 
-# Make Real-ESRGAN executable
-RUN chmod +x bin/realesrgan-ncnn-vulkan || chmod +x bin/realesrgan-ncnn-vulkan.exe || true
+# Download correct Real-ESRGAN binary for Linux
+RUN echo "Downloading Real-ESRGAN for Linux..." && \
+    wget -q https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesrgan-ncnn-vulkan-20220424-ubuntu.zip && \
+    unzip -q realesrgan-ncnn-vulkan-20220424-ubuntu.zip && \
+    mv realesrgan-ncnn-vulkan-20220424-ubuntu/realesrgan-ncnn-vulkan bin/realesrgan-ncnn-vulkan && \
+    chmod +x bin/realesrgan-ncnn-vulkan && \
+    rm -rf realesrgan-ncnn-vulkan-20220424-ubuntu* && \
+    echo "Binary downloaded and installed" && \
+    file bin/realesrgan-ncnn-vulkan
 
 # Expose port (Cloud Run uses PORT environment variable)
 ENV PORT=8080
