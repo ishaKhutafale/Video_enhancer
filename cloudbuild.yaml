@@ -33,6 +33,6 @@ steps:
 images:
   - 'gcr.io/$PROJECT_ID/video-enhancer:$BUILD_ID'
 
-timeout: 1200s
+timeout: 2400s
 options:
   machineType: 'N1_HIGHCPU_8'

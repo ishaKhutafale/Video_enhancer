@@ -3,9 +3,8 @@ tqdm
 flask
 gunicorn
 numpy
+torch --index-url https://download.pytorch.org/whl/cpu
+torchvision --index-url https://download.pytorch.org/whl/cpu
 realesrgan
 basicsr
 facexlib
-gfpgan
-torch
-torchvision
