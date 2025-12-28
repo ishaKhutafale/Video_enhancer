@@ -27,9 +27,11 @@ RUN mkdir -p input output frames upscaled
 RUN echo "Downloading Real-ESRGAN for Linux..." && \
     wget -q https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesrgan-ncnn-vulkan-20220424-ubuntu.zip && \
     unzip -q realesrgan-ncnn-vulkan-20220424-ubuntu.zip && \
-    mv realesrgan-ncnn-vulkan-20220424-ubuntu/realesrgan-ncnn-vulkan bin/realesrgan-ncnn-vulkan && \
+    ls -la && \
+    find . -name "realesrgan-ncnn-vulkan" -type f && \
+    mv realesrgan-ncnn-vulkan bin/realesrgan-ncnn-vulkan && \
     chmod +x bin/realesrgan-ncnn-vulkan && \
-    rm -rf realesrgan-ncnn-vulkan-20220424-ubuntu* && \
+    rm -rf *.zip && \
     echo "Binary downloaded and installed" && \
     file bin/realesrgan-ncnn-vulkan
 
