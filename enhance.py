@@ -1,6 +1,7 @@
 import os
 import subprocess
 import shutil
+import platform
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 BIN_DIR = os.path.join(PROJECT_ROOT, "bin")
@@ -12,55 +13,66 @@ UPSCALE_FACTOR = 2
 GPU_MODE = "0"  # 0 = CPU only
 TILE_SIZE = "256"
 
-# Check for Real-ESRGAN executable (Windows needs .exe)
+# Check for Real-ESRGAN executable - Platform-aware detection
+IS_WINDOWS = platform.system() == "Windows"
 BIN_RR_EXE = os.path.join(BIN_DIR, "realesrgan-ncnn-vulkan.exe")
 BIN_RR_NO_EXT = os.path.join(BIN_DIR, "realesrgan-ncnn-vulkan")
 
-if os.path.exists(BIN_RR_EXE):
-    BIN_RR = BIN_RR_EXE
-elif os.path.exists(BIN_RR_NO_EXT):
-    # Check if it's actually a Windows executable
-    try:
-        result = subprocess.run([BIN_RR_NO_EXT, "--help"], 
-                              capture_output=True, timeout=2)
+# Prioritize based on platform
+if IS_WINDOWS:
+    # On Windows, prefer .exe
+    if os.path.exists(BIN_RR_EXE):
+        BIN_RR = BIN_RR_EXE
+    elif os.path.exists(BIN_RR_NO_EXT):
         BIN_RR = BIN_RR_NO_EXT
-    except (OSError, subprocess.TimeoutExpired):
+    else:
         raise FileNotFoundError(
-            "Real-ESRGAN Windows executable not found!\n"
+            "Real-ESRGAN executable not found!\n"
             "Download from: https://github.com/xinntao/Real-ESRGAN/releases\n"
             "1. Download 'realesrgan-ncnn-vulkan-20220424-windows.zip'\n"
             "2. Extract 'realesrgan-ncnn-vulkan.exe' to the 'bin' folder\n"
             "3. Also extract the 'models' folder to 'bin/models'"
         )
 else:
-    raise FileNotFoundError(
-        "Real-ESRGAN executable not found in bin folder!\n"
-        "Download from: https://github.com/xinntao/Real-ESRGAN/releases\n"
-        "1. Download 'realesrgan-ncnn-vulkan-20220424-windows.zip'\n"
-        "2. Extract 'realesrgan-ncnn-vulkan.exe' to the 'bin' folder\n"
-        "3. Also extract the 'models' folder to 'bin/models'"
-    )
+    # On Linux/Mac, use non-.exe version
+    if os.path.exists(BIN_RR_NO_EXT):
+        BIN_RR = BIN_RR_NO_EXT
+    else:
+        raise FileNotFoundError(
+            "Real-ESRGAN executable not found!\n"
+            "For Linux, it should be at: bin/realesrgan-ncnn-vulkan\n"
+            "The binary is included in the Docker image."
+        )
 
-# Check for FFmpeg - first in bin folder, then in PATH, then common install locations
-FFMPEG_LOCAL = os.path.join(BIN_DIR, "ffmpeg.exe")
-FFMPEG_CHOCOLATEY = r"C:\ProgramData\chocolatey\bin\ffmpeg.exe"
-FFMPEG_CHOCO_LIB = r"C:\ProgramData\chocolatey\lib\ffmpeg\tools\ffmpeg\bin\ffmpeg.exe"
-
-if os.path.exists(FFMPEG_LOCAL):
-    FFMPEG_CMD = FFMPEG_LOCAL
-elif os.path.exists(FFMPEG_CHOCOLATEY):
-    FFMPEG_CMD = FFMPEG_CHOCOLATEY
-elif os.path.exists(FFMPEG_CHOCO_LIB):
-    FFMPEG_CMD = FFMPEG_CHOCO_LIB
-elif shutil.which("ffmpeg"):
-    FFMPEG_CMD = "ffmpeg"
+# Check for FFmpeg - Platform-aware
+if IS_WINDOWS:
+    FFMPEG_LOCAL = os.path.join(BIN_DIR, "ffmpeg.exe")
+    FFMPEG_CHOCOLATEY = r"C:\ProgramData\chocolatey\bin\ffmpeg.exe"
+    FFMPEG_CHOCO_LIB = r"C:\ProgramData\chocolatey\lib\ffmpeg\tools\ffmpeg\bin\ffmpeg.exe"
+    
+    if os.path.exists(FFMPEG_LOCAL):
+        FFMPEG_CMD = FFMPEG_LOCAL
+    elif os.path.exists(FFMPEG_CHOCOLATEY):
+        FFMPEG_CMD = FFMPEG_CHOCOLATEY
+    elif os.path.exists(FFMPEG_CHOCO_LIB):
+        FFMPEG_CMD = FFMPEG_CHOCO_LIB
+    elif shutil.which("ffmpeg"):
+        FFMPEG_CMD = "ffmpeg"
+    else:
+        raise FileNotFoundError(
+            "FFmpeg not found! Please install FFmpeg:\n"
+            "1. Via Chocolatey: choco install ffmpeg\n"
+            "2. Or download from https://www.gyan.dev/ffmpeg/builds/ and add to PATH\n"
+            "3. Or place ffmpeg.exe in the 'bin' folder"
+        )
 else:
-    raise FileNotFoundError(
-        "FFmpeg not found! Please install FFmpeg:\n"
-        "1. Via Chocolatey: choco install ffmpeg\n"
-        "2. Or download from https://www.gyan.dev/ffmpeg/builds/ and add to PATH\n"
-        "3. Or place ffmpeg.exe in the 'bin' folder"
-    )
+    # On Linux/Mac, FFmpeg should be in PATH or system installed
+    if shutil.which("ffmpeg"):
+        FFMPEG_CMD = "ffmpeg"
+    else:
+        raise FileNotFoundError(
+            "FFmpeg not found! It should be installed in the Docker image."
+        )
 
 
 def upscale_frame_data(args):
