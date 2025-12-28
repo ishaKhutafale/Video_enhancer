@@ -3,3 +3,9 @@ tqdm
 flask
 gunicorn
 numpy
+realesrgan
+basicsr
+facexlib
+gfpgan
+torch
+torchvision

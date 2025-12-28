@@ -4,6 +4,18 @@ import shutil
 import platform
 import cv2
 import sys
+import numpy as np
+from pathlib import Path
+
+# Try to import Real-ESRGAN
+try:
+    from basicsr.archs.rrdbnet_arch import RRDBNet
+    from realesrgan import RealESRGANer
+    USE_REALESRGAN = True
+    print("Real-ESRGAN Python library loaded successfully", flush=True)
+except ImportError as e:
+    USE_REALESRGAN = False
+    print(f"Real-ESRGAN not available, using OpenCV: {e}", flush=True)
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 BIN_DIR = os.path.join(PROJECT_ROOT, "bin")
@@ -12,8 +24,50 @@ FOLDER_UPSCALE = os.path.join(PROJECT_ROOT, "upscaled")
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "output")
 
 UPSCALE_FACTOR = 2
-GPU_MODE = "0"  # 0 = CPU only
-TILE_SIZE = "256"
+
+# Initialize Real-ESRGAN upsampler (global, created once)
+UPSAMPLER = None
+
+def init_realesrgan():
+    """Initialize Real-ESRGAN model once"""
+    global UPSAMPLER
+    if UPSAMPLER is not None:
+        return UPSAMPLER
+    
+    if not USE_REALESRGAN:
+        return None
+    
+    try:
+        print("Initializing Real-ESRGAN model...", flush=True)
+        
+        # Use RealESRGAN_x2plus model (good balance of speed/quality)
+        model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=2)
+        
+        # Model path
+        model_path = os.path.join(BIN_DIR, 'models', 'RealESRGAN_x2plus.pth')
+        
+        # Download model if not exists
+        if not os.path.exists(model_path):
+            print(f"Model not found at {model_path}, will use default", flush=True)
+            model_path = None  # Let RealESRGANer download it
+        
+        UPSAMPLER = RealESRGANer(
+            scale=2,
+            model_path=model_path,
+            model=model,
+            tile=256,
+            tile_pad=10,
+            pre_pad=0,
+            half=False,  # Use FP32 for CPU
+            device='cpu'
+        )
+        
+        print("Real-ESRGAN initialized successfully on CPU", flush=True)
+        return UPSAMPLER
+    except Exception as e:
+        print(f"Failed to initialize Real-ESRGAN: {e}", flush=True)
+        print("Falling back to OpenCV", flush=True)
+        return None
 
 # Check for Real-ESRGAN executable - Platform-aware detection
 IS_WINDOWS = platform.system() == "Windows"
@@ -97,8 +151,8 @@ else:
 
 
 def upscale_frame_data(args):
-    """Upscale a single frame using OpenCV (Cloud Run compatible)"""
-    frame_num, progress_callback, current, total = args
+    """Upscale a single frame using Real-ESRGAN or OpenCV fallback"""
+    frame_num, progress_callback, current, total, upsampler = args
     infile = os.path.join(TMP_FRAMES, f"{frame_num:06d}.jpg")
     outfile = os.path.join(FOLDER_UPSCALE, f"{frame_num:06d}.jpg")
     
@@ -112,11 +166,24 @@ def upscale_frame_data(args):
             print(f"[Frame {current}/{total}] ERROR: Could not read {infile}", flush=True)
             return False
         
-        # Upscale using OpenCV's INTER_CUBIC (high quality, fast)
-        height, width = img.shape[:2]
-        new_width = width * UPSCALE_FACTOR
-        new_height = height * UPSCALE_FACTOR
-        upscaled = cv2.resize(img, (new_width, new_height), interpolation=cv2.INTER_CUBIC)
+        # Try Real-ESRGAN first, fallback to OpenCV
+        if upsampler is not None:
+            try:
+                # Real-ESRGAN expects RGB
+                img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                output, _ = upsampler.enhance(img_rgb, outscale=2)
+                # Convert back to BGR for saving
+                upscaled = cv2.cvtColor(output, cv2.COLOR_RGB2BGR)
+            except Exception as e:
+                if current == 1:
+                    print(f"Real-ESRGAN failed, using OpenCV: {e}", flush=True)
+                # Fallback to OpenCV
+                height, width = img.shape[:2]
+                upscaled = cv2.resize(img, (width * 2, height * 2), interpolation=cv2.INTER_CUBIC)
+        else:
+            # Use OpenCV
+            height, width = img.shape[:2]
+            upscaled = cv2.resize(img, (width * 2, height * 2), interpolation=cv2.INTER_CUBIC)
         
         # Save upscaled image
         cv2.imwrite(outfile, upscaled, [cv2.IMWRITE_JPEG_QUALITY, 95])
@@ -125,7 +192,7 @@ def upscale_frame_data(args):
             progress_callback(current, total)
         return True
     except Exception as e:
-        print(f"[Frame {current}/{total}] EXCEPTION on frame {frame_num:06d}.jpg: {str(e)}", flush=True)
+        print(f"[Frame {current}/{total}] EXCEPTION: {str(e)}", flush=True)
         return False
 
 
@@ -151,11 +218,17 @@ def enhance_video(input_video, progress_callback=None):
     frames = sorted(f for f in os.listdir(TMP_FRAMES) if f.endswith(".jpg"))
     total = len(frames)
     
+    # Initialize Real-ESRGAN
+    upsampler = init_realesrgan()
+    method = "Real-ESRGAN (CPU)" if upsampler else "OpenCV INTER_CUBIC"
+    
     print(f"="*60, flush=True)
-    print(f"STARTING VIDEO ENHANCEMENT (OpenCV INTER_CUBIC)", flush=True)
+    print(f"STARTING VIDEO ENHANCEMENT", flush=True)
     print(f"Total frames: {total}", flush=True)
     print(f"Upscale factor: {UPSCALE_FACTOR}x", flush=True)
-    print(f"Method: OpenCV resize with INTER_CUBIC interpolation", flush=True)
+    print(f"Method: {method}", flush=True)
+    if upsampler:
+        print(f"Note: CPU processing is slow (~30-60s per frame)", flush=True)
     print(f"="*60, flush=True)
     
     # Upscale frames sequentially (Cloud Run compatible)
@@ -163,7 +236,7 @@ def enhance_video(input_video, progress_callback=None):
     success_count = 0
     for idx in range(total):
         frame_num = idx + 1  # Frames are numbered 000001, 000002, etc.
-        result = upscale_frame_data((frame_num, progress_callback, idx + 1, total))
+        result = upscale_frame_data((frame_num, progress_callback, idx + 1, total, upsampler))
         if result:
             success_count += 1
     
