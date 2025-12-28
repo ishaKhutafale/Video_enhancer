@@ -77,9 +77,11 @@ else:
 
 def upscale_frame_data(args):
     """Upscale a single frame - wrapper for sequential processing"""
-    i, progress_callback, done, total = args
-    infile = os.path.join(TMP_FRAMES, f"{i:06d}.jpg")
-    outfile = os.path.join(FOLDER_UPSCALE, f"{i:06d}.jpg")
+    frame_num, progress_callback, current, total = args
+    infile = os.path.join(TMP_FRAMES, f"{frame_num:06d}.jpg")
+    outfile = os.path.join(FOLDER_UPSCALE, f"{frame_num:06d}.jpg")
+    
+    print(f"[Frame {current}/{total}] Processing frame {frame_num:06d}.jpg", flush=True)
     
     try:
         result = subprocess.run([
@@ -89,13 +91,25 @@ def upscale_frame_data(args):
             "-s", str(UPSCALE_FACTOR),
             "-g", GPU_MODE,
             "-t", TILE_SIZE
-        ], capture_output=True, text=True, check=True)
+        ], capture_output=True, text=True, check=True, timeout=60)
+        
+        print(f"[Frame {current}/{total}] Completed frame {frame_num:06d}.jpg", flush=True)
         
         if progress_callback:
-            progress_callback(done + 1, total)
+            progress_callback(current, total)
         return True
+    except subprocess.TimeoutExpired as e:
+        print(f"[Frame {current}/{total}] TIMEOUT on frame {frame_num:06d}.jpg after 60s", flush=True)
+        return False
     except subprocess.CalledProcessError as e:
-        print(f"Error upscaling frame {i}: {e.stderr}")
+        print(f"[Frame {current}/{total}] ERROR on frame {frame_num:06d}.jpg", flush=True)
+        print(f"  Command: {' '.join(e.cmd)}", flush=True)
+        print(f"  Return code: {e.returncode}", flush=True)
+        print(f"  Stderr: {e.stderr}", flush=True)
+        print(f"  Stdout: {e.stdout}", flush=True)
+        return False
+    except Exception as e:
+        print(f"[Frame {current}/{total}] EXCEPTION on frame {frame_num:06d}.jpg: {str(e)}", flush=True)
         return False
 
 
@@ -121,10 +135,32 @@ def enhance_video(input_video, progress_callback=None):
     frames = sorted(f for f in os.listdir(TMP_FRAMES) if f.endswith(".jpg"))
     total = len(frames)
     
+    print(f"="*60, flush=True)
+    print(f"STARTING REAL-ESRGAN ENHANCEMENT", flush=True)
+    print(f"Total frames: {total}", flush=True)
+    print(f"Upscale factor: {UPSCALE_FACTOR}x", flush=True)
+    print(f"GPU mode: {GPU_MODE} (0=CPU)", flush=True)
+    print(f"Tile size: {TILE_SIZE}", flush=True)
+    print(f"Binary: {BIN_RR}", flush=True)
+    print(f"="*60, flush=True)
+    
     # Upscale frames sequentially (Cloud Run compatible)
-    print(f"Starting enhancement of {total} frames...")
-    for i in range(total):
-        upscale_frame_data((i, progress_callback, i, total))
+    # Frame numbers start at 1, not 0
+    success_count = 0
+    for idx in range(total):
+        frame_num = idx + 1  # Frames are numbered 000001, 000002, etc.
+        result = upscale_frame_data((frame_num, progress_callback, idx + 1, total))
+        if result:
+            success_count += 1
+    
+    print(f"="*60, flush=True)
+    print(f"ENHANCEMENT COMPLETE: {success_count}/{total} frames successful", flush=True)
+    print(f"="*60, flush=True)
+    
+    if success_count == 0:
+        raise RuntimeError(f"All {total} frames failed to upscale! Check logs above for errors.")
+    elif success_count < total:
+        print(f"WARNING: Only {success_count}/{total} frames were successfully upscaled", flush=True)
 
     # Rebuild video (NO audio)
     # Browser compatible format
