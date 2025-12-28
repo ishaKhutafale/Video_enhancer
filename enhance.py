@@ -1,6 +1,5 @@
 import os
 import subprocess
-from multiprocessing import Pool, cpu_count
 import shutil
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -64,18 +63,28 @@ else:
     )
 
 
-def upscale_frame(i):
+def upscale_frame_data(args):
+    """Upscale a single frame - wrapper for sequential processing"""
+    i, progress_callback, done, total = args
     infile = os.path.join(TMP_FRAMES, f"{i:06d}.jpg")
     outfile = os.path.join(FOLDER_UPSCALE, f"{i:06d}.jpg")
-    subprocess.run([
-        BIN_RR,
-        "-i", infile,
-        "-o", outfile,
-        "-s", str(UPSCALE_FACTOR),
-        "-g", GPU_MODE,
-        "-t", TILE_SIZE
-    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    return 1
+    
+    try:
+        result = subprocess.run([
+            BIN_RR,
+            "-i", infile,
+            "-o", outfile,
+            "-s", str(UPSCALE_FACTOR),
+            "-g", GPU_MODE,
+            "-t", TILE_SIZE
+        ], capture_output=True, text=True, check=True)
+        
+        if progress_callback:
+            progress_callback(done + 1, total)
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"Error upscaling frame {i}: {e.stderr}")
+        return False
 
 
 def enhance_video(input_video, progress_callback=None):
@@ -99,14 +108,11 @@ def enhance_video(input_video, progress_callback=None):
 
     frames = sorted(f for f in os.listdir(TMP_FRAMES) if f.endswith(".jpg"))
     total = len(frames)
-    done = 0
-
-    # Upscale frames (CPU-safe)
-    with Pool(max(1, cpu_count() // 2)) as pool:
-        for _ in pool.imap_unordered(upscale_frame, range(total)):
-            done += 1
-            if progress_callback:
-                progress_callback(done, total)
+    
+    # Upscale frames sequentially (Cloud Run compatible)
+    print(f"Starting enhancement of {total} frames...")
+    for i in range(total):
+        upscale_frame_data((i, progress_callback, i, total))
 
     # Rebuild video (NO audio)
     # Browser compatible format
