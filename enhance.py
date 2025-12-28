@@ -2,6 +2,8 @@ import os
 import subprocess
 import shutil
 import platform
+import cv2
+import sys
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 BIN_DIR = os.path.join(PROJECT_ROOT, "bin")
@@ -95,38 +97,33 @@ else:
 
 
 def upscale_frame_data(args):
-    """Upscale a single frame - wrapper for sequential processing"""
+    """Upscale a single frame using OpenCV (Cloud Run compatible)"""
     frame_num, progress_callback, current, total = args
     infile = os.path.join(TMP_FRAMES, f"{frame_num:06d}.jpg")
     outfile = os.path.join(FOLDER_UPSCALE, f"{frame_num:06d}.jpg")
     
-    print(f"[Frame {current}/{total}] Processing frame {frame_num:06d}.jpg", flush=True)
+    if current % 10 == 1 or current == total:
+        print(f"[Frame {current}/{total}] Processing frame {frame_num:06d}.jpg", flush=True)
     
     try:
-        result = subprocess.run([
-            BIN_RR,
-            "-i", infile,
-            "-o", outfile,
-            "-s", str(UPSCALE_FACTOR),
-            "-g", GPU_MODE,
-            "-t", TILE_SIZE
-        ], capture_output=True, text=True, check=True, timeout=60)
+        # Read image
+        img = cv2.imread(infile)
+        if img is None:
+            print(f"[Frame {current}/{total}] ERROR: Could not read {infile}", flush=True)
+            return False
         
-        print(f"[Frame {current}/{total}] Completed frame {frame_num:06d}.jpg", flush=True)
+        # Upscale using OpenCV's INTER_CUBIC (high quality, fast)
+        height, width = img.shape[:2]
+        new_width = width * UPSCALE_FACTOR
+        new_height = height * UPSCALE_FACTOR
+        upscaled = cv2.resize(img, (new_width, new_height), interpolation=cv2.INTER_CUBIC)
+        
+        # Save upscaled image
+        cv2.imwrite(outfile, upscaled, [cv2.IMWRITE_JPEG_QUALITY, 95])
         
         if progress_callback:
             progress_callback(current, total)
         return True
-    except subprocess.TimeoutExpired as e:
-        print(f"[Frame {current}/{total}] TIMEOUT on frame {frame_num:06d}.jpg after 60s", flush=True)
-        return False
-    except subprocess.CalledProcessError as e:
-        print(f"[Frame {current}/{total}] ERROR on frame {frame_num:06d}.jpg", flush=True)
-        print(f"  Command: {' '.join(e.cmd)}", flush=True)
-        print(f"  Return code: {e.returncode}", flush=True)
-        print(f"  Stderr: {e.stderr}", flush=True)
-        print(f"  Stdout: {e.stdout}", flush=True)
-        return False
     except Exception as e:
         print(f"[Frame {current}/{total}] EXCEPTION on frame {frame_num:06d}.jpg: {str(e)}", flush=True)
         return False
@@ -155,12 +152,10 @@ def enhance_video(input_video, progress_callback=None):
     total = len(frames)
     
     print(f"="*60, flush=True)
-    print(f"STARTING REAL-ESRGAN ENHANCEMENT", flush=True)
+    print(f"STARTING VIDEO ENHANCEMENT (OpenCV INTER_CUBIC)", flush=True)
     print(f"Total frames: {total}", flush=True)
     print(f"Upscale factor: {UPSCALE_FACTOR}x", flush=True)
-    print(f"GPU mode: {GPU_MODE} (0=CPU)", flush=True)
-    print(f"Tile size: {TILE_SIZE}", flush=True)
-    print(f"Binary: {BIN_RR}", flush=True)
+    print(f"Method: OpenCV resize with INTER_CUBIC interpolation", flush=True)
     print(f"="*60, flush=True)
     
     # Upscale frames sequentially (Cloud Run compatible)
