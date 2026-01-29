@@ -5,35 +5,51 @@
     <title>Video Enhancer</title>
     <link rel="stylesheet" href="/static/style.css">
 </head>
+
 <body>
     <div class="container">
+
+        <!-- Header -->
         <div class="header-box">
-          <h1>Video Enhancer (CPU)</h1>
+            <h1>Video Enhancer (CPU)</h1>
         </div>
 
-
+        <!-- Upload Section -->
         <div class="upload-section">
             <input type="file" id="videoInput">
             <button id="enhanceBtn" onclick="upload()">Enhance Video</button>
         </div>
 
+        <!-- Progress Bar -->
         <div class="progress">
             <div id="bar"></div>
         </div>
 
+        <!-- Video Display -->
         <div class="videos">
+
+            <!-- Original Video -->
             <div class="video-container">
                 <h2>Original</h2>
-                <video id="inputVideo" controls></video>
+                <video id="inputVideo" controls width="320"></video>
             </div>
+
+            <!-- Enhanced Video -->
             <div class="video-container">
                 <h2>Enhanced</h2>
-                <video id="outputVideo" controls style="display:none;"></video>
+
+                <!-- ✅ Always visible -->
+                <video id="outputVideo" controls width="320"></video>
+
+                <!-- Status message -->
+                <p id="statusMsg"></p>
             </div>
+
         </div>
     </div>
 
     <script src="/static/app.js"></script>
+
 </body>
 </html>
 
