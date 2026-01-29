@@ -1,3 +1,4 @@
-opencv-python
-tqdm
 flask
+psutil
+tqdm
+numpy
