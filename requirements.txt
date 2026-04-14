@@ -2,3 +2,4 @@ flask
 psutil
 tqdm
 numpy
+gunicorn
